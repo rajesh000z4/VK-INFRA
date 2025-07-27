@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>VK INFRASTRUCTURE</title>
+  <style>
+    body { margin:0; font-family:Arial,sans-serif; background:#eef2f5; color:#333; }
+    header.dashboard-header {
+      background:#003366;
+      color:#fff;
+      padding:20px;
+      text-align:center;
+      font-size:1.8rem;
+      letter-spacing:2px;
+      border-bottom:4px solid #002244;
+    }
+    .container { max-width:720px; margin:20px auto; padding:20px; background:#fff;
+                 border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+    .view { display:none; } .view.active { display:block; }
+    input, select { width:100%; padding:8px; margin:8px 0; border:1px solid #ccc; border-radius:4px; }
+    button {
+      padding:10px 16px; margin:6px; border:none; border-radius:4px;
+      background:#004080; color:#fff; cursor:pointer; font-weight:600;
+    }
+    button:hover { background:#003366; }
+    .error { color:#b00020; } .success { color:green; }
+    table { width:100%; border-collapse:collapse; margin-top:15px; }
+    th, td { border:1px solid #ccc; padding:8px; text-align:left; }
+    th { background:#f4f4f4; }
+    .actions button { margin-right:4px; padding:4px 8px; font-size:0.9rem; }
+    .header-small { font-size:1.2rem; margin-bottom:10px; color:#004080; }
+  </style>
+</head>
+<body>
+  <header class="dashboard-header">VK INFRASTRUCTURE</header>
+  <div class="container">
+
+    <!-- Login -->
+    <div id="loginView" class="view active">
+      <h2 class="header-small">🔐 Login</h2>
+      <input id="loginId" placeholder="User ID"/>
+      <input type="password" id="loginPw" placeholder="Password"/>
+      <button onclick="doLogin()">Login</button>
+      <p id="loginError" class="error"></p>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboardView" class="view">
+      <h2 class="header-small">Dashboard</h2>
+      <button onclick="showView('entryView')">Data Entry</button>
+      <button onclick="showView('reportView')">Report</button>
+      <button onclick="showView('overallView')">Overall Report</button>
+      <button onclick="showView('changePwView')">Change Password</button>
+      <button onclick="backupData()">Backup Data</button>
+      <button onclick="importData()">Import Data</button>
+      <button onclick="logout()">Logout</button>
+    </div>
+
+    <!-- Data Entry -->
+    <div id="entryView" class="view">
+      <h2 class="header-small">Data Entry</h2>
+      <form onsubmit="addEntry(event)">
+        <label>Date: <input type="date" id="eDate" required/></label>
+        <label>Vehicle Type: <input id="eType" required/></label>
+        <label>Vehicle Number: <input id="eNum" required/></label>
+        <label>Driver Name: <input id="eDriver" required/></label>
+        <label>Morning Start: <input type="time" id="eMStart" required/></label>
+        <label>Morning End: <input type="time" id="eMEnd" required/></label>
+        <label>Afternoon Start: <input type="time" id="eAStart" required/></label>
+        <label>Afternoon End: <input type="time" id="eAEnd" required/></label>
+        <label>Diesel Liters: <input type="number" step="0.1" id="eDiesel" required/></label>
+        <label>Status:
+          <select id="eStatus" required><option>Full Day</option><option>Half Day</option></select>
+        </label>
+        <label>Complaints: <input id="eComplaints"/></label>
+        <button type="submit">Save</button>
+        <button type="button" onclick="showView('dashboardView')">Back</button>
+      </form>
+      <p id="entryMessage" class="success"></p>
+    </div>
+
+    <!-- Report -->
+    <div id="reportView" class="view">
+      <h2 class="header-small">Report</h2>
+      <label>Date: <input type="date" id="rDate"/></label>
+      <button onclick="filterReport()">Show</button>
+      <button onclick="toggleDeleted()">Show Deleted</button>
+      <div id="reportList"></div>
+      <button onclick="showView('dashboardView')">Back</button>
+    </div>
+
+    <!-- Overall -->
+    <div id="overallView" class="view">
+      <h2 class="header-small">Overall Report</h2>
+      <label>From: <input type="date" id="oFrom"/></label>
+      <label>To: <input type="date" id="oTo"/></label>
+      <button onclick="filterOverall()">Show Summary</button>
+      <div id="overallResult"></div>
+      <button onclick="showView('dashboardView')">Back</button>
+    </div>
+
+    <!-- Change Password -->
+    <div id="changePwView" class="view">
+      <h2 class="header-small">🔒 Change Password</h2>
+      <label>Old Password: <input type="password" id="oldPw" required/></label>
+      <label>New Password: <input type="password" id="newPw" required/></label>
+      <label>Confirm New: <input type="password" id="confirmPw" required/></label>
+      <button onclick="changePassword()">Update</button>
+      <button type="button" onclick="showView('dashboardView')">Back</button>
+      <p id="pwMessage" class="error"></p>
+      <p id="pwSuccess" class="success"></p>
+    </div>
+
+  </div>
+
+  <script>
+    const LOGIN_ID = "VK INFRA";
+    const DEFAULT_PW = "Rajesh@1234";
+
+    function getEntries(){return JSON.parse(localStorage.getItem('fleetEntries')||'[]');}
+    function saveEntries(a){localStorage.setItem('fleetEntries',JSON.stringify(a));}
+    function getDeleted(){return JSON.parse(localStorage.getItem('deletedEntries')||'[]');}
+    function saveDeleted(a){localStorage.setItem('deletedEntries',JSON.stringify(a));}
+    function getStoredPw(){return localStorage.getItem('adminPassword')||DEFAULT_PW;}
+
+    function showView(id){
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      ['loginError','pwMessage','pwSuccess','entryMessage'].forEach(x=>{
+        const el=document.getElementById(x); if(el) el.textContent='';
+      });
+    }
+
+    function doLogin(){
+      const id=document.getElementById('loginId').value.trim();
+      const pw=document.getElementById('loginPw').value;
+      if(id===LOGIN_ID && pw===getStoredPw()) showView('dashboardView');
+      else document.getElementById('loginError').textContent='Invalid credentials';
+    }
+
+    function logout(){
+      showView('loginView');
+      document.getElementById('loginId').value='';
+      document.getElementById('loginPw').value='';
+    }
+
+    function changePassword(){
+      const oldPw=document.getElementById('oldPw').value;
+      const newPw=document.getElementById('newPw').value;
+      const conf=document.getElementById('confirmPw').value;
+      const msg=document.getElementById('pwMessage');
+      const suc=document.getElementById('pwSuccess');
+      msg.textContent=''; suc.textContent='';
+      if(oldPw!==getStoredPw()){msg.textContent='Old password incorrect.';return;}
+      if(newPw!==conf){msg.textContent='Passwords do not match.';return;}
+      localStorage.setItem('adminPassword',newPw);
+      suc.textContent='Password updated!';
+      document.getElementById('oldPw').value='';document.getElementById('newPw').value='';document.getElementById('confirmPw').value='';
+    }
+
+    function addEntry(e){
+      e.preventDefault();
+      const r = {
+        date: document.getElementById('eDate').value,
+        type: document.getElementById('eType').value.trim(),
+        number: document.getElementById('eNum').value.trim(),
+        driver: document.getElementById('eDriver').value.trim(),
+        mStart: document.getElementById('eMStart').value,
+        mEnd: document.getElementById('eMEnd').value,
+        aStart: document.getElementById('eAStart').value,
+        aEnd: document.getElementById('eAEnd').value,
+        diesel: parseFloat(document.getElementById('eDiesel').value),
+        status: document.getElementById('eStatus').value,
+        complaints: document.getElementById('eComplaints').value.trim()
+      };
+      const arr=getEntries(); arr.push(r); saveEntries(arr);
+      document.getElementById('entryMessage').textContent='Saved!';
+      setTimeout(()=>document.getElementById('entryMessage').textContent='',1500);
+      e.target.reset();
+    }
+
+    let showingDeleted=false;
+    function filterReport(){
+      const d=document.getElementById('rDate').value;
+      const entries=getEntries(), del=getDeleted();
+      const arr = showingDeleted ? del : (d ? entries.filter(r=>r.date===d) : []);
+      const container=document.getElementById('reportList'); container.innerHTML='';
+      if(!showingDeleted && !d){container.textContent='Select a date';return;}
+      if(arr.length===0){container.textContent=showingDeleted?'No deleted entries.':'No records.';return;}
+      const tbl=document.createElement('table');
+      const hdr=['#','Type','Number','Driver','M‑Start','M‑End','A‑Start','A‑End','Diesel','Status','Complaints','Actions'];
+      const head=tbl.insertRow(); hdr.forEach(h=>head.insertCell().textContent=h);
+      arr.forEach((r,i)=>{
+        const row=tbl.insertRow(); row.insertCell().textContent=i+1;
+        ['type','number','driver','mStart','mEnd','aStart','aEnd','diesel','status','complaints']
+          .forEach(k=>row.insertCell().textContent=r[k]);
+        const a=row.insertCell(); a.className='actions';
+        if(showingDeleted){
+          const b=document.createElement('button'); b.textContent='Restore'; b.onclick=()=>restoreEntry(i); a.appendChild(b);
+        } else {
+          [['Edit',()=>editEntry(d,i)],['Delete',()=>onDelete(d,i)],['WhatsApp',()=>shareWhatsApp(r)],
+           ['Print',()=>printRecord(r)],['CSV',()=>exportCSV([r],'rec-'+i)]]
+          .forEach(([t,fn])=>{const b=document.createElement('button');b.textContent=t;b.onclick=fn;a.appendChild(b);});
+        }
+      });
+      container.appendChild(tbl);
+      if(!showingDeleted){
+        const btn=document.createElement('button');
+        btn.textContent='Export All to CSV';
+        btn.onclick=()=>exportCSV(entries.filter(r=>r.date===d),'report-all');
+        container.appendChild(btn);
+      }
+    }
+
+    function toggleDeleted(){showingDeleted=!showingDeleted; filterReport();}
+    function onDelete(date, idx){
+      if(!confirm('Are you sure you want to delete?')) return;
+      const entries=getEntries(), recArr=entries.filter(r=>r.date===date), rec=recArr[idx];
+      const gi=entries.findIndex(r=>r===rec);
+      if(gi>=0){entries.splice(gi,1); const del=getDeleted(); del.push(rec); saveEntries(entries); saveDeleted(del);}
+      filterReport();
+    }
+    function restoreEntry(idx){
+      const del=getDeleted(), entries=getEntries(), rec=del[idx];
+      del.splice(idx,1); entries.push(rec); saveDeleted(del); saveEntries(entries); filterReport();
+    }
+
+    function editEntry(date, idx){
+      const arr=getEntries(), same=arr.filter(r=>r.date===date), rec=same[idx];
+      const gi=arr.findIndex(r=>r===rec);
+      if(gi>=0){arr.splice(gi,1); saveEntries(arr);}
+      showView('entryView');
+      if(rec) for(const key of ['Date','Type','Num','Driver','MStart','MEnd','AStart','AEnd','Diesel','Status','Complaints']){
+        const el=document.getElementById('e'+key);
+        if(el) el.value=rec[key.charAt(0).toLowerCase()+key.slice(1)];
+      }
+    }
+
+    function shareWhatsApp(r){ window.open('https://api.whatsapp.com/send?text='+encodeURIComponent(
+      `Date:${r.date}\nVehicle:${r.type}-${r.number}\nDriver:${r.driver}\nDiesel:${r.diesel}\nStatus:${r.status}`)); }
+    function printRecord(r){ const w=window.open(); w.document.write('<pre>'+JSON.stringify(r,null,2)+'</pre>'); w.print(); w.close();}
+    function exportCSV(arr,f){ if(!arr||!arr.length) return; const hdr=Object.keys(arr[0]).join(','), rows=arr.map(r=>Object.values(r).map(v=>`"${v}"`).join(',')).join('\n'); const blob=new Blob([hdr+'\n'+rows], {type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=f+'.csv'; a.click();}
+
+    function filterOverall(){
+      const from=document.getElementById('oFrom').value, to=document.getElementById('oTo').value;
+      if(!from||!to){alert('Select both dates');return;}
+      const arr=getEntries().filter(r=>r.date>=from && r.date<=to);
+      const res=document.getElementById('overallResult'); res.innerHTML='';
+      if(!arr.length){ res.textContent='No data.'; return;}
+      const tbl=document.createElement('table'); const hdr=['Type','Number','Driver','Total Hours','Diesel']; const head=tbl.insertRow(); hdr.forEach(h=>head.insertCell().textContent=h);
+      arr.forEach(r=>{ const row=tbl.insertRow(); row.insertCell().textContent=r.type; row.insertCell().textContent=r.number; row.insertCell().textContent=r.driver; row.insertCell().textContent=computeHours(r).toFixed(2); row.insertCell().textContent=r.diesel; });
+      res.appendChild(tbl);
+      const btn=document.createElement('button'); btn.textContent='Print / PDF'; btn.onclick=()=>window.print(); res.appendChild(btn);
+    }
+
+    function computeHours(r){
+      const toMin=s=>{const [h,m]=s.split(':').map(Number); return h*60+m;};
+      let total=0;
+      if(r.mStart&&r.mEnd) total+=toMin(r.mEnd)-toMin(r.mStart);
+      if(r.aStart&&r.aEnd) total+=toMin(r.aEnd)-toMin(r.aStart);
+      return parseFloat((total/60).toFixed(2));
+    }
+
+    function backupData(){
+      const payload={entries:getEntries(),deleted:getDeleted(),password:getStoredPw()};
+      const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=`vkinfra_backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
+    }
+
+    function importData(){
+      const inp=document.createElement('input'); inp.type='file'; inp.accept='.json';
+      inp.onchange=e => { const f=e.target.files[0]; if(!f) return;
+        const rd=new FileReader();
+        rd.onload=ev=>{ try{ const obj=JSON.parse(ev.target.result);
+            if(obj.entries&&obj.deleted){ saveEntries(obj.entries); saveDeleted(obj.deleted); if(obj.password) localStorage.setItem('adminPassword',obj.password); alert('Data imported!'); } else alert('Not valid backup file.'); }
+          catch{alert('Invalid JSON.');}
+        };
+        rd.readAsText(f);
+      };
+      inp.click();
+    }
+  </script>
+</body>
+</html>
